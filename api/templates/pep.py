@@ -275,64 +275,62 @@ class ParitalSeqPeptide(LinearPeptide):
         # dynamically changing
         self.current_template = None
 
-   def dummy_lig_block_bonds(self, cplx_desc, size):
-    template = np.random.choice(self.templates)
+    def dummy_lig_block_bonds(self, cplx_desc, size):
+        template = np.random.choice(self.templates)
 
-    blocks = []
-    fixed_blocks = []
+        blocks = []
+        fixed_blocks = []
 
-    for i, aa in enumerate(template):
-        block_id = (i + 1, '')
+        for i, aa in enumerate(template):
+            block_id = (i + 1, '')
 
-        if aa == 'X':
-            # 与 LinearPeptide 一致：只保留“这是一个氨基酸位置”的占位信息
-            blocks.append(Block(
-                name='GLY',
-                atoms=[Atom(
-                    name='C',
-                    coordinate=[0, 0, 0],
-                    element='C',
-                    id=-1,
-                )],
-                id=block_id,
-            ))
-        else:
-            aa_name = VOCAB.symbol_to_abrv(aa)
-            atom_names = VOCAB.abrv_to_atoms(aa_name)
-            elements = VOCAB.abrv_to_elements(aa_name)
-
-            block = Block(
-                name=aa_name,
-                atoms=[
-                    Atom(
-                        name=atom_name,
+            if aa == 'X':
+                blocks.append(Block(
+                    name='GLY',
+                    atoms=[Atom(
+                        name='C',
                         coordinate=[0, 0, 0],
-                        element=element,
-                        id=j,
-                    )
-                    for j, (atom_name, element)
-                    in enumerate(zip(atom_names, elements))
-                ],
-                id=block_id,
-            )
-            blocks.append(block)
-            fixed_blocks.append(block)
+                        element='C',
+                        id=-1,
+                    )],
+                    id=block_id,
+                ))
+            else:
+                aa_name = VOCAB.symbol_to_abrv(aa)
+                atom_names = VOCAB.abrv_to_atoms(aa_name)
+                elements = VOCAB.abrv_to_elements(aa_name)
 
-    # 仅保留固定残基本身的内部键；不要预先写相邻残基的 C–N 键
-    mol_index = len(cplx_desc.cplx)
-    bonds = []
+                block = Block(
+                    name=aa_name,
+                    atoms=[
+                        Atom(
+                            name=atom_name,
+                            coordinate=[0, 0, 0],
+                            element=element,
+                            id=j,
+                        )
+                        for j, (atom_name, element)
+                        in enumerate(zip(atom_names, elements))
+                    ],
+                    id=block_id,
+                )
+                blocks.append(block)
+                fixed_blocks.append(block)
 
-    for block in fixed_blocks:
-        block_index = block.id[0] - 1
-        for bond in VOCAB.abrv_to_bonds(block.name):
-            bonds.append(Bond(
-                (mol_index, block_index, bond[0]),
-                (mol_index, block_index, bond[1]),
-                bond[2],
-            ))
+        mol_index = len(cplx_desc.cplx)
+        bonds = []
 
-    self.current_template = template
-    return blocks, bonds
+        for block in fixed_blocks:
+            block_index = block.id[0] - 1
+            for bond in VOCAB.abrv_to_bonds(block.name):
+                bonds.append(Bond(
+                    (mol_index, block_index, bond[0]),
+                    (mol_index, block_index, bond[1]),
+                    bond[2],
+                ))
+
+        self.current_template = template
+        return blocks, bonds
     
     def to_data(self, cplx_desc: ComplexDesc) -> dict:
         data = super().to_data(cplx_desc)
