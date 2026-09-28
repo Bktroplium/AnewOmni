@@ -347,33 +347,80 @@ class ParitalSeqPeptide(LinearPeptide):
 
 @R.register('PeptideMutant')
 class PeptideMutant(LinearPeptide):
-    def __init__(self, wild_type_path: str, mutate_positions: List[int], w=1.0):
-        super().__init__(size_min=0, size_max=1)    # do not rely on sampled size
+
+    def __init__(
+        self,
+        wild_type_path: str,
+        mutate_positions: List[int],
+        coord_positions: List[int] = None,
+        w=1.0,
+    ):
+        super().__init__(size_min=0, size_max=1)
+
         self.wild_type_path = wild_type_path
-        self.mutate_positions = mutate_positions    # start from zero
+        self.mutate_positions = mutate_positions   # 从 0 开始
+        self.coord_positions = coord_positions     # 从 0 开始；None 保持旧行为
         self.w = w
-        self.wt_cplx = load_cplx(self.wild_type_path, cleanup_first=True)
+        self.wt_cplx = load_cplx(
+            self.wild_type_path,
+            cleanup_first=True,
+        )
 
     def remove_ref_lig(self, cplx_desc):
-        return  None    # do not remove
+        return None
 
     def add_dummy_lig(self, cplx_desc):
-        return deepcopy(self.wt_cplx)   # substitute with the wild type
+        return deepcopy(self.wt_cplx)
 
     def to_data(self, cplx_desc: ComplexDesc) -> dict:
         data = super().to_data(cplx_desc)
-        # add topo conditioning
-        pep_mut_mask = [1 for _ in range(len(cplx_desc.lig_block_ids))]
+
+        n_pep = len(cplx_desc.lig_block_ids)
+
+        # 2D 条件：1 表示固定氨基酸身份
+        pep_seq_mask = [1] * n_pep
         for i in self.mutate_positions:
-            if i < len(pep_mut_mask): pep_mut_mask[i] = 0
-        mask_2d = [0 for _ in cplx_desc.pocket_block_ids] + pep_mut_mask
-        mask_3d = [0 for _ in cplx_desc.pocket_block_ids] + [1 for _ in pep_mut_mask]   # the coordinates should be at similar places
+            if not 0 <= i < n_pep:
+                raise ValueError(
+                    f"mutate position {i} outside peptide length {n_pep}"
+                )
+            pep_seq_mask[i] = 0
+
+        # 3D 条件：1 表示使用参考结构中的坐标作为条件
+        if self.coord_positions is None:
+            # 保持官方旧行为：整条肽都有坐标条件
+            pep_coord_mask = [1] * n_pep
+        else:
+            pep_coord_mask = [0] * n_pep
+            for i in self.coord_positions:
+                if not 0 <= i < n_pep:
+                    raise ValueError(
+                        f"coordinate position {i} outside peptide length {n_pep}"
+                    )
+                pep_coord_mask[i] = 1
+
+        # 避免把“允许突变”和“固定序列”同时用于同一位点
+        overlap = set(self.mutate_positions) & set(self.coord_positions or [])
+        if overlap:
+            raise ValueError(
+                f"positions cannot be both mutated and anchored: {sorted(overlap)}"
+            )
+
+        target_mask = [0] * len(cplx_desc.pocket_block_ids)
+
         data['condition_config'] = ConditionConfig(
-            mask_2d=torch.tensor(mask_2d, dtype=torch.bool),
-            mask_3d=torch.tensor(mask_3d, dtype=torch.bool),
+            mask_2d=torch.tensor(
+                target_mask + pep_seq_mask,
+                dtype=torch.bool,
+            ),
+            mask_3d=torch.tensor(
+                target_mask + pep_coord_mask,
+                dtype=torch.bool,
+            ),
             mask_incomplete_2d=None,
-            w=self.w
+            w=self.w,
         )
+
         return data
 
 
